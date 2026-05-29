@@ -31,3 +31,14 @@ ALLOWED_IMAGE_API_HOSTS=stellar-quokka-2fdb2f.netlify.app
 ```
 
 多个域名使用英文逗号分隔。
+
+## 超时
+
+页面里的“代理超时（秒）”会传给服务端代理，服务端默认等待 110 秒。也可以通过环境变量调整默认值和上限：
+
+```bash
+IMAGE_API_TIMEOUT_MS=110000
+IMAGE_API_MAX_TIMEOUT_MS=900000
+```
+
+Vercel 的 `api/generate.js` 已在 `vercel.json` 中配置为最多运行 300 秒。Netlify 同步函数有平台执行时间限制，长耗时图片生成更建议部署到 Vercel 或自托管 Node 服务。

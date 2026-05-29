@@ -1,4 +1,6 @@
-const DEFAULT_TIMEOUT_MS = 120000;
+const MIN_TIMEOUT_MS = 5000;
+const DEFAULT_TIMEOUT_MS = Number(process.env.IMAGE_API_TIMEOUT_MS || 110000);
+const MAX_TIMEOUT_MS = Number(process.env.IMAGE_API_MAX_TIMEOUT_MS || 900000);
 
 function jsonResponse(statusCode, body, headers = {}) {
   return {
@@ -125,13 +127,22 @@ function validateRequestBody(request) {
   }
 }
 
+function normalizeTimeoutMs(timeoutSeconds) {
+  const requestedMs = Number(timeoutSeconds) * 1000;
+  const fallbackMs = Number.isFinite(DEFAULT_TIMEOUT_MS) ? DEFAULT_TIMEOUT_MS : 110000;
+  const maxMs = Number.isFinite(MAX_TIMEOUT_MS) ? MAX_TIMEOUT_MS : 900000;
+  const timeoutMs = Number.isFinite(requestedMs) && requestedMs > 0 ? requestedMs : fallbackMs;
+  return Math.min(Math.max(Math.round(timeoutMs), MIN_TIMEOUT_MS), maxMs);
+}
+
 async function callImageApi(payload) {
   const targetUrl = normalizeTargetUrl(payload.apiBaseUrl, payload.endpointPath);
   assertAllowedHost(targetUrl);
   validateRequestBody(payload.request);
 
+  const timeoutMs = normalizeTimeoutMs(payload.timeoutSeconds);
   const controller = new AbortController();
-  const timeout = setTimeout(() => controller.abort(), DEFAULT_TIMEOUT_MS);
+  const timeout = setTimeout(() => controller.abort(), timeoutMs);
 
   try {
     const response = await fetch(targetUrl, {
@@ -167,7 +178,8 @@ async function callImageApi(payload) {
 
     return jsonResponse(200, data);
   } catch (error) {
-    const message = error.name === "AbortError" ? "上游接口请求超时" : error.message;
+    const message =
+      error.name === "AbortError" ? `上游接口请求超时（${Math.round(timeoutMs / 1000)} 秒）` : error.message;
     return jsonResponse(500, { error: message });
   } finally {
     clearTimeout(timeout);

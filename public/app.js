@@ -1,5 +1,6 @@
 const DEFAULT_IMAGE_URL =
   "https://patchwiki.biligame.com/images/arknights/1/11/p6dnxwdyfhj5p2izztffkfj3nmcjt07.png";
+const CLIENT_TIMEOUT_PADDING_MS = 5000;
 
 const elements = {
   form: document.querySelector("#requestForm"),
@@ -81,6 +82,14 @@ function parseExtraJson() {
   return parsed;
 }
 
+function normalizeTimeoutSeconds(value) {
+  const parsed = Number(value || 110);
+  if (!Number.isFinite(parsed)) {
+    throw new Error("代理超时必须是数字");
+  }
+  return Math.min(Math.max(Math.round(parsed), 5), 900);
+}
+
 function readFormPayload() {
   const formData = new FormData(elements.form);
   const imageUrls = collectImageUrls();
@@ -111,6 +120,7 @@ function readFormPayload() {
     apiKey: String(formData.get("apiKey") || ""),
     authMode: String(formData.get("authMode") || "bearer"),
     customHeaderName: String(formData.get("customHeaderName") || "").trim(),
+    timeoutSeconds: normalizeTimeoutSeconds(formData.get("timeoutSeconds")),
     request
   };
 }
@@ -220,12 +230,17 @@ function clearOutput() {
 }
 
 async function generateImage() {
+  let timeoutId;
   try {
     if (!elements.form.reportValidity()) {
       return;
     }
 
     const payload = readFormPayload();
+    const controller = new AbortController();
+    const clientTimeoutMs = payload.timeoutSeconds * 1000 + CLIENT_TIMEOUT_PADDING_MS;
+    timeoutId = setTimeout(() => controller.abort(), clientTimeoutMs);
+
     elements.generateButton.disabled = true;
     setStatus("正在请求图片接口", "loading");
 
@@ -234,7 +249,8 @@ async function generateImage() {
       headers: {
         "Content-Type": "application/json"
       },
-      body: JSON.stringify(payload)
+      body: JSON.stringify(payload),
+      signal: controller.signal
     });
 
     const result = await response.json().catch(() => ({}));
@@ -244,8 +260,17 @@ async function generateImage() {
 
     renderResponse(result);
   } catch (error) {
-    setStatus(error.message || "生成失败", "error");
+    let message = error.message || "生成失败";
+    if (error.name === "AbortError") {
+      message = "浏览器等待超时：代理接口长时间没有返回";
+    } else if (error instanceof TypeError && /fetch/i.test(error.message || "")) {
+      message = "网络请求失败：代理函数可能超时、崩溃或被部署平台断开，请查看函数日志";
+    }
+    setStatus(message, "error");
   } finally {
+    if (timeoutId) {
+      clearTimeout(timeoutId);
+    }
     elements.generateButton.disabled = false;
   }
 }
