@@ -1,0 +1,13 @@
+{
+  "name": "editimage",
+  "version": "1.0.0",
+  "private": true,
+  "description": "可部署到 Vercel 或 Netlify 的 OpenAI 格式图片编辑代理网页",
+  "scripts": {
+    "dev": "node server/local-dev.cjs",
+    "start": "node server/local-dev.cjs"
+  },
+  "engines": {
+    "node": ">=18"
+  }
+}

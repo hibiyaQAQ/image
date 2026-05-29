@@ -1,0 +1,174 @@
+<!doctype html>
+<html lang="zh-CN">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>图片生成控制台</title>
+    <link rel="stylesheet" href="/styles.css" />
+  </head>
+  <body>
+    <main class="app-shell">
+      <section class="toolbar">
+        <div>
+          <h1>图片生成控制台</h1>
+          <p>同源代理请求，解析 base64 图片返回。</p>
+        </div>
+        <div class="toolbar-actions">
+          <button class="button ghost" id="resetButton" type="button">重置</button>
+          <button class="button primary" id="generateButton" type="button">生成图片</button>
+        </div>
+      </section>
+
+      <section class="workspace">
+        <form class="panel request-panel" id="requestForm">
+          <div class="section-title">
+            <h2>接口</h2>
+          </div>
+
+          <label class="field span-2">
+            <span>Base URL</span>
+            <input
+              id="apiBaseUrl"
+              name="apiBaseUrl"
+              type="url"
+              spellcheck="false"
+              value="https://stellar-quokka-2fdb2f.netlify.app/.netlify/ai/v1"
+              required
+            />
+          </label>
+
+          <label class="field">
+            <span>Endpoint</span>
+            <input id="endpointPath" name="endpointPath" type="text" value="/images/edits" />
+          </label>
+
+          <label class="field">
+            <span>鉴权方式</span>
+            <select id="authMode" name="authMode">
+              <option value="bearer">Authorization: Bearer</option>
+              <option value="x-api-key">x-api-key</option>
+              <option value="custom">自定义 Header</option>
+              <option value="none">不发送</option>
+            </select>
+          </label>
+
+          <label class="field custom-auth hidden" id="customHeaderField">
+            <span>Header 名称</span>
+            <input id="customHeaderName" name="customHeaderName" type="text" value="Authorization" />
+          </label>
+
+          <label class="field api-key-field span-2" id="apiKeyField">
+            <span>API Key</span>
+            <input id="apiKey" name="apiKey" type="password" autocomplete="off" spellcheck="false" />
+          </label>
+
+          <div class="section-title span-2">
+            <h2>参数</h2>
+          </div>
+
+          <label class="field">
+            <span>模型</span>
+            <input id="model" name="model" type="text" value="gpt-image-2" required />
+          </label>
+
+          <label class="field">
+            <span>尺寸</span>
+            <select id="size" name="size">
+              <option>1024x1024</option>
+              <option>1024x1536</option>
+              <option>1536x1024</option>
+              <option>512x512</option>
+              <option>auto</option>
+            </select>
+          </label>
+
+          <label class="field">
+            <span>数量</span>
+            <input id="n" name="n" type="number" min="1" max="4" value="1" />
+          </label>
+
+          <label class="field">
+            <span>质量</span>
+            <select id="quality" name="quality">
+              <option value="">不发送</option>
+              <option value="auto">auto</option>
+              <option value="low">low</option>
+              <option value="medium">medium</option>
+              <option value="high">high</option>
+            </select>
+          </label>
+
+          <label class="field">
+            <span>背景</span>
+            <select id="background" name="background">
+              <option value="">不发送</option>
+              <option value="opaque">opaque</option>
+              <option value="transparent">transparent</option>
+              <option value="auto">auto</option>
+            </select>
+          </label>
+
+          <label class="field">
+            <span>输出格式</span>
+            <select id="outputFormat" name="outputFormat">
+              <option value="">不发送</option>
+              <option value="png">png</option>
+              <option value="jpeg">jpeg</option>
+              <option value="webp">webp</option>
+            </select>
+          </label>
+
+          <div class="section-title span-2">
+            <h2>参考图</h2>
+            <button class="button small" id="addImageButton" type="button">添加</button>
+          </div>
+
+          <div class="image-list span-2" id="imageList"></div>
+
+          <label class="field span-2">
+            <span>Prompt</span>
+            <textarea id="prompt" name="prompt" rows="7" required>基于参考图生成一张动作、构图和场景保持一致的图片。</textarea>
+          </label>
+
+          <details class="advanced span-2">
+            <summary>额外 JSON</summary>
+            <textarea id="extraJson" name="extraJson" rows="5" spellcheck="false" placeholder='{"seed": 1234}'></textarea>
+          </details>
+        </form>
+
+        <section class="panel output-panel" aria-live="polite">
+          <div class="section-title">
+            <h2>结果</h2>
+            <button class="button small" id="clearOutputButton" type="button">清空</button>
+          </div>
+
+          <div class="status empty" id="statusBox">等待生成</div>
+          <div class="preview-grid" id="previewGrid"></div>
+
+          <div class="usage hidden" id="usageBox">
+            <h3>用量</h3>
+            <dl id="usageList"></dl>
+          </div>
+
+          <details class="raw-response hidden" id="rawResponseBox">
+            <summary>原始响应</summary>
+            <pre id="rawResponse"></pre>
+          </details>
+        </section>
+      </section>
+    </main>
+
+    <template id="imageInputTemplate">
+      <div class="image-row">
+        <label class="field image-url-field">
+          <span>URL</span>
+          <input type="url" class="image-url-input" spellcheck="false" required />
+        </label>
+        <img class="thumb" alt="参考图预览" />
+        <button class="button small danger remove-image-button" type="button">移除</button>
+      </div>
+    </template>
+
+    <script src="/app.js" defer></script>
+  </body>
+</html>
