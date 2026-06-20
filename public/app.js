@@ -318,7 +318,7 @@ async function generateImage() {
     return;
   }
 
-  const count = Math.min(Math.max(Number(payload.request.n) || 1, 1), 10);
+  const count = Math.max(Number(payload.request.n) || 1, 1);
   clearOutput();
   elements.generateButton.disabled = true;
   setStatus(count > 1 ? `正在并行生成 ${count} 张图片…` : "正在请求图片接口", "loading");
