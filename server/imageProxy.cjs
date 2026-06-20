@@ -165,13 +165,17 @@ async function callImageApi(payload) {
     }
 
     if (!response.ok) {
-      const message =
+      let message =
         data?.error?.message ||
-        data?.error ||
+        (typeof data?.error === "string" ? data.error : null) ||
         data?.message ||
-        `上游接口返回 HTTP ${response.status}`;
+        `上游未返回错误描述`;
+      if (typeof message !== "string") {
+        message = JSON.stringify(message);
+      }
       return jsonResponse(response.status, {
-        error: message,
+        error: `上游接口 HTTP ${response.status}：${message}`,
+        status: response.status,
         upstream: data
       });
     }

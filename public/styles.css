@@ -310,6 +310,57 @@ textarea:focus {
   flex: 1;
 }
 
+.result-item.error {
+  border-color: rgba(180, 35, 24, 0.35);
+  background: #fff4f2;
+  padding: 12px;
+}
+
+.result-error-title {
+  font-weight: 600;
+  color: var(--danger);
+  margin-bottom: 6px;
+}
+
+.result-error-message {
+  margin: 0;
+  font-size: 13px;
+  line-height: 1.55;
+  color: var(--danger);
+  word-break: break-word;
+}
+
+.result-error-detail {
+  margin-top: 10px;
+}
+
+.result-error-detail summary {
+  cursor: pointer;
+  font-size: 12px;
+  color: var(--muted);
+}
+
+.result-error-detail pre {
+  max-height: 240px;
+  overflow: auto;
+  margin: 8px 0 0;
+  padding: 10px;
+  border-radius: 6px;
+  background: var(--code);
+  color: #e5e7eb;
+  font-family: "Cascadia Code", Consolas, monospace;
+  font-size: 12px;
+  line-height: 1.5;
+  white-space: pre-wrap;
+  word-break: break-word;
+}
+
+.status.partial {
+  border-color: rgba(154, 91, 19, 0.35);
+  background: #fff8eb;
+  color: var(--warning);
+}
+
 .usage {
   margin-top: 18px;
   padding-top: 16px;

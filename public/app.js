@@ -108,9 +108,11 @@ function readFormPayload() {
   const quality = String(formData.get("quality") || "");
   const background = String(formData.get("background") || "");
   const outputFormat = String(formData.get("outputFormat") || "");
+  const moderation = String(formData.get("moderation") || "");
   if (quality) request.quality = quality;
   if (background) request.background = background;
   if (outputFormat) request.output_format = outputFormat;
+  if (moderation) request.moderation = moderation;
 
   Object.assign(request, parseExtraJson());
 
@@ -164,8 +166,7 @@ function renderUsage(usage) {
   elements.usageBox.classList.toggle("hidden", rows.length === 0);
 }
 
-function renderImages(response) {
-  elements.previewGrid.innerHTML = "";
+function appendImages(response, taskIndex) {
   const outputFormat = response.output_format || "png";
   const items = Array.isArray(response.data) ? response.data : [];
   const images = items
@@ -178,7 +179,7 @@ function renderImages(response) {
     article.className = "result-item";
 
     const img = document.createElement("img");
-    img.alt = `生成结果 ${index + 1}`;
+    img.alt = `任务 ${taskIndex + 1} 生成结果 ${index + 1}`;
     img.src = dataUrl;
 
     const actions = document.createElement("div");
@@ -189,7 +190,7 @@ function renderImages(response) {
     downloadButton.className = "button small";
     downloadButton.textContent = "下载";
     downloadButton.addEventListener("click", () => {
-      downloadDataUrl(dataUrl, `image-${Date.now()}-${index + 1}.${outputFormat}`);
+      downloadDataUrl(dataUrl, `image-t${taskIndex + 1}-${index + 1}.${outputFormat}`);
     });
 
     const copyButton = document.createElement("button");
@@ -212,12 +213,52 @@ function renderImages(response) {
   return images.length;
 }
 
-function renderResponse(response) {
-  const count = renderImages(response);
-  renderUsage(response.usage);
-  elements.rawResponse.textContent = JSON.stringify(response, null, 2);
-  elements.rawResponseBox.classList.remove("hidden");
-  setStatus(count > 0 ? `已生成 ${count} 张图片` : "响应中没有 b64_json 图片", count > 0 ? "success" : "error");
+function appendErrorCard(message, detail, taskIndex) {
+  const article = document.createElement("article");
+  article.className = "result-item error";
+
+  const title = document.createElement("div");
+  title.className = "result-error-title";
+  title.textContent = `任务 ${taskIndex + 1} 失败`;
+
+  const body = document.createElement("p");
+  body.className = "result-error-message";
+  body.textContent = message || "未知错误";
+
+  article.append(title, body);
+
+  if (detail !== undefined && detail !== null) {
+    const details = document.createElement("details");
+    details.className = "result-error-detail";
+    const summary = document.createElement("summary");
+    summary.textContent = "查看详情";
+    const pre = document.createElement("pre");
+    pre.textContent = typeof detail === "string" ? detail : JSON.stringify(detail, null, 2);
+    details.append(summary, pre);
+    article.append(details);
+  }
+
+  elements.previewGrid.appendChild(article);
+}
+
+function aggregateUsage(usages) {
+  if (usages.length === 0) {
+    return null;
+  }
+  if (usages.length === 1) {
+    return usages[0];
+  }
+
+  const sum = (pick) => usages.reduce((acc, usage) => acc + (Number(pick(usage)) || 0), 0);
+  return {
+    input_tokens: sum((u) => u.input_tokens),
+    output_tokens: sum((u) => u.output_tokens),
+    total_tokens: sum((u) => u.total_tokens),
+    input_tokens_details: {
+      image_tokens: sum((u) => u.input_tokens_details?.image_tokens),
+      text_tokens: sum((u) => u.input_tokens_details?.text_tokens)
+    }
+  };
 }
 
 function clearOutput() {
@@ -229,21 +270,12 @@ function clearOutput() {
   setStatus("等待生成");
 }
 
-async function generateImage() {
-  let timeoutId;
+async function sendSingleRequest(payload) {
+  const controller = new AbortController();
+  const clientTimeoutMs = payload.timeoutSeconds * 1000 + CLIENT_TIMEOUT_PADDING_MS;
+  const timeoutId = setTimeout(() => controller.abort(), clientTimeoutMs);
+
   try {
-    if (!elements.form.reportValidity()) {
-      return;
-    }
-
-    const payload = readFormPayload();
-    const controller = new AbortController();
-    const clientTimeoutMs = payload.timeoutSeconds * 1000 + CLIENT_TIMEOUT_PADDING_MS;
-    timeoutId = setTimeout(() => controller.abort(), clientTimeoutMs);
-
-    elements.generateButton.disabled = true;
-    setStatus("正在请求图片接口", "loading");
-
     const response = await fetch("/api/generate", {
       method: "POST",
       headers: {
@@ -255,10 +287,11 @@ async function generateImage() {
 
     const result = await response.json().catch(() => ({}));
     if (!response.ok) {
-      throw new Error(result.error || `请求失败：HTTP ${response.status}`);
+      const message = result.error || `请求失败：HTTP ${response.status}`;
+      return { ok: false, message, detail: result };
     }
 
-    renderResponse(result);
+    return { ok: true, data: result };
   } catch (error) {
     let message = error.message || "生成失败";
     if (error.name === "AbortError") {
@@ -266,13 +299,88 @@ async function generateImage() {
     } else if (error instanceof TypeError && /fetch/i.test(error.message || "")) {
       message = "网络请求失败：代理函数可能超时、崩溃或被部署平台断开，请查看函数日志";
     }
-    setStatus(message, "error");
+    return { ok: false, message, detail: null };
   } finally {
-    if (timeoutId) {
-      clearTimeout(timeoutId);
-    }
-    elements.generateButton.disabled = false;
+    clearTimeout(timeoutId);
   }
+}
+
+async function generateImage() {
+  if (!elements.form.reportValidity()) {
+    return;
+  }
+
+  let payload;
+  try {
+    payload = readFormPayload();
+  } catch (error) {
+    setStatus(error.message || "参数有误", "error");
+    return;
+  }
+
+  const count = Math.min(Math.max(Number(payload.request.n) || 1, 1), 10);
+  clearOutput();
+  elements.generateButton.disabled = true;
+  setStatus(count > 1 ? `正在并行生成 ${count} 张图片…` : "正在请求图片接口", "loading");
+
+  const rawResponses = [];
+  const usages = [];
+  let imageCount = 0;
+  let failed = 0;
+  let done = 0;
+
+  const updateProgress = () => {
+    if (done >= count) {
+      return;
+    }
+    setStatus(`完成 ${done}/${count} · 成功 ${imageCount} 张 / 失败 ${failed} 个`, "loading");
+  };
+
+  // 每张图片拆成独立请求（n=1）并行发送，彼此隔离：单次失败不影响其它结果，成功的即时显示。
+  const tasks = Array.from({ length: count }, (_, index) => {
+    const singlePayload = {
+      ...payload,
+      request: { ...payload.request, n: 1 }
+    };
+
+    return sendSingleRequest(singlePayload).then((outcome) => {
+      done += 1;
+      if (outcome.ok) {
+        rawResponses.push(outcome.data);
+        if (outcome.data.usage) {
+          usages.push(outcome.data.usage);
+        }
+        const added = appendImages(outcome.data, index);
+        if (added > 0) {
+          imageCount += added;
+        } else {
+          failed += 1;
+          appendErrorCard("响应中没有 b64_json 图片", outcome.data, index);
+        }
+      } else {
+        failed += 1;
+        rawResponses.push(outcome.detail ?? { error: outcome.message });
+        appendErrorCard(outcome.message, outcome.detail, index);
+      }
+      updateProgress();
+    });
+  });
+
+  await Promise.allSettled(tasks);
+
+  renderUsage(aggregateUsage(usages));
+  elements.rawResponse.textContent = JSON.stringify(count === 1 ? rawResponses[0] : rawResponses, null, 2);
+  elements.rawResponseBox.classList.remove("hidden");
+
+  if (imageCount > 0 && failed === 0) {
+    setStatus(`已生成 ${imageCount} 张图片`, "success");
+  } else if (imageCount > 0 && failed > 0) {
+    setStatus(`部分成功：生成 ${imageCount} 张，失败 ${failed} 个`, "partial");
+  } else {
+    setStatus(`全部失败：${failed} 个任务均未成功，详情见下方卡片`, "error");
+  }
+
+  elements.generateButton.disabled = false;
 }
 
 function resetForm() {
