@@ -13,6 +13,8 @@ const elements = {
   authMode: document.querySelector("#authMode"),
   apiKeyField: document.querySelector("#apiKeyField"),
   customHeaderField: document.querySelector("#customHeaderField"),
+  outputFormat: document.querySelector("#outputFormat"),
+  outputCompressionField: document.querySelector("#outputCompressionField"),
   statusBox: document.querySelector("#statusBox"),
   previewGrid: document.querySelector("#previewGrid"),
   usageBox: document.querySelector("#usageBox"),
@@ -35,6 +37,7 @@ const PERSIST_FIELDS = [
   "quality",
   "background",
   "outputFormat",
+  "outputCompression",
   "moderation",
   "prompt",
   "extraJson"
@@ -96,6 +99,12 @@ function toggleAuthFields() {
   const mode = elements.authMode.value;
   elements.apiKeyField.classList.toggle("hidden", mode === "none");
   elements.customHeaderField.classList.toggle("hidden", mode !== "custom");
+}
+
+function toggleCompressionField() {
+  const format = elements.outputFormat.value;
+  const supported = format === "jpeg" || format === "webp";
+  elements.outputCompressionField.classList.toggle("hidden", !supported);
 }
 
 function addImageRow(value = "") {
@@ -181,6 +190,17 @@ function readFormPayload() {
   if (background) request.background = background;
   if (outputFormat) request.output_format = outputFormat;
   if (moderation) request.moderation = moderation;
+
+  // output_compression 仅 jpeg / webp 支持
+  if (outputFormat === "jpeg" || outputFormat === "webp") {
+    const compressionRaw = String(formData.get("outputCompression") || "");
+    if (compressionRaw !== "") {
+      const compression = Math.min(Math.max(Math.round(Number(compressionRaw)), 0), 100);
+      if (Number.isFinite(compression)) {
+        request.output_compression = compression;
+      }
+    }
+  }
 
   Object.assign(request, parseExtraJson());
 
@@ -468,6 +488,7 @@ elements.generateButton.addEventListener("click", generateImage);
 elements.resetButton.addEventListener("click", resetForm);
 elements.clearOutputButton.addEventListener("click", clearOutput);
 elements.authMode.addEventListener("change", toggleAuthFields);
+elements.outputFormat.addEventListener("change", toggleCompressionField);
 
 // 任意字段输入/变更后即时写入 localStorage（参考图 URL 的 input 事件也会冒泡到 form）
 elements.form.addEventListener("input", saveForm);
@@ -484,3 +505,4 @@ if (savedState) {
   applyState(savedState);
 }
 toggleAuthFields();
+toggleCompressionField();
