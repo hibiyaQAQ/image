@@ -21,6 +21,72 @@ const elements = {
   rawResponse: document.querySelector("#rawResponse")
 };
 
+const STORAGE_KEY = "editimage:form:v1";
+const PERSIST_FIELDS = [
+  "apiBaseUrl",
+  "endpointPath",
+  "authMode",
+  "customHeaderName",
+  "apiKey",
+  "model",
+  "size",
+  "n",
+  "timeoutSeconds",
+  "quality",
+  "background",
+  "outputFormat",
+  "moderation",
+  "prompt",
+  "extraJson"
+];
+
+function saveForm() {
+  try {
+    const formData = new FormData(elements.form);
+    const state = {};
+    for (const name of PERSIST_FIELDS) {
+      state[name] = String(formData.get(name) ?? "");
+    }
+    state.images = collectImageUrls();
+    localStorage.setItem(STORAGE_KEY, JSON.stringify(state));
+  } catch (error) {
+    // localStorage 不可用（隐私模式 / 配额已满）时静默跳过，不影响主流程
+  }
+}
+
+function loadForm() {
+  try {
+    const raw = localStorage.getItem(STORAGE_KEY);
+    if (!raw) {
+      return null;
+    }
+    const state = JSON.parse(raw);
+    return state && typeof state === "object" ? state : null;
+  } catch (error) {
+    return null;
+  }
+}
+
+function clearSavedForm() {
+  try {
+    localStorage.removeItem(STORAGE_KEY);
+  } catch (error) {
+    // 同上，忽略
+  }
+}
+
+function applyState(state) {
+  for (const name of PERSIST_FIELDS) {
+    if (state[name] === undefined) {
+      continue;
+    }
+    const field = elements.form.elements[name];
+    if (field) {
+      field.value = state[name];
+    }
+  }
+}
+
 function setStatus(message, type = "empty") {
   elements.statusBox.textContent = message;
   elements.statusBox.className = `status ${type}`;
@@ -53,11 +119,13 @@ function addImageRow(value = "") {
   removeButton.addEventListener("click", () => {
     if (elements.imageList.children.length > 1) {
       row.remove();
+      saveForm();
       return;
     }
 
     input.value = "";
     thumb.removeAttribute("src");
+    saveForm();
   });
 
   elements.imageList.appendChild(fragment);
@@ -384,6 +452,7 @@ async function generateImage() {
 }
 
 function resetForm() {
+  clearSavedForm();
   elements.form.reset();
   elements.imageList.innerHTML = "";
   addImageRow(DEFAULT_IMAGE_URL);
@@ -391,11 +460,27 @@ function resetForm() {
   clearOutput();
 }
 
-elements.addImageButton.addEventListener("click", () => addImageRow(""));
+elements.addImageButton.addEventListener("click", () => {
+  addImageRow("");
+  saveForm();
+});
 elements.generateButton.addEventListener("click", generateImage);
 elements.resetButton.addEventListener("click", resetForm);
 elements.clearOutputButton.addEventListener("click", clearOutput);
 elements.authMode.addEventListener("change", toggleAuthFields);
 
-addImageRow(DEFAULT_IMAGE_URL);
+// 任意字段输入/变更后即时写入 localStorage（参考图 URL 的 input 事件也会冒泡到 form）
+elements.form.addEventListener("input", saveForm);
+elements.form.addEventListener("change", saveForm);
+
+// 启动时优先恢复上次保存的配置；没有则用默认参考图
+const savedState = loadForm();
+if (savedState && Array.isArray(savedState.images) && savedState.images.length > 0) {
+  savedState.images.forEach((url) => addImageRow(url));
+} else {
+  addImageRow(DEFAULT_IMAGE_URL);
+}
+if (savedState) {
+  applyState(savedState);
+}
 toggleAuthFields();
