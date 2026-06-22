@@ -262,13 +262,19 @@ function appendImages(response, taskIndex) {
     .filter((value) => typeof value === "string" && value.length > 0);
 
   images.forEach((base64, index) => {
-    const dataUrl = `data:image/${outputFormat};base64,${base64}`;
+    const mimeType = `image/${outputFormat}`;
+    const byteChars = atob(base64);
+    const bytes = new Uint8Array(byteChars.length);
+    for (let i = 0; i < byteChars.length; i++) bytes[i] = byteChars.charCodeAt(i);
+    const blob = new Blob([bytes], { type: mimeType });
+    const objectUrl = URL.createObjectURL(blob);
+
     const article = document.createElement("article");
     article.className = "result-item";
 
     const img = document.createElement("img");
     img.alt = `任务 ${taskIndex + 1} 生成结果 ${index + 1}`;
-    img.src = dataUrl;
+    img.src = objectUrl;
 
     const actions = document.createElement("div");
     actions.className = "result-actions";
@@ -278,7 +284,7 @@ function appendImages(response, taskIndex) {
     downloadButton.className = "button small";
     downloadButton.textContent = "下载";
     downloadButton.addEventListener("click", () => {
-      downloadDataUrl(dataUrl, `image-t${taskIndex + 1}-${index + 1}.${outputFormat}`);
+      downloadDataUrl(objectUrl, `image-t${taskIndex + 1}-${index + 1}.${outputFormat}`);
     });
 
     const copyButton = document.createElement("button");
@@ -286,6 +292,7 @@ function appendImages(response, taskIndex) {
     copyButton.className = "button small";
     copyButton.textContent = "复制 Data URL";
     copyButton.addEventListener("click", async () => {
+      const dataUrl = `data:${mimeType};base64,${base64}`;
       await copyText(dataUrl);
       copyButton.textContent = "已复制";
       setTimeout(() => {
@@ -350,6 +357,10 @@ function aggregateUsage(usages) {
 }
 
 function clearOutput() {
+  // 释放 Object URL，避免 Blob 内存泄漏
+  for (const img of elements.previewGrid.querySelectorAll("img[src^='blob:']")) {
+    URL.revokeObjectURL(img.src);
+  }
   elements.previewGrid.innerHTML = "";
   elements.usageList.innerHTML = "";
   elements.rawResponse.textContent = "";
@@ -457,7 +468,20 @@ async function generateImage() {
   await Promise.allSettled(tasks);
 
   renderUsage(aggregateUsage(usages));
-  elements.rawResponse.textContent = JSON.stringify(count === 1 ? rawResponses[0] : rawResponses, null, 2);
+  // 展示原始响应时裁掉 b64_json 内容，避免把数十 MB 的 base64 字符串塞进 DOM 导致页面卡顿
+  const stripB64 = (obj) => {
+    if (!obj || typeof obj !== "object") return obj;
+    if (Array.isArray(obj)) return obj.map(stripB64);
+    return Object.fromEntries(
+      Object.entries(obj).map(([k, v]) =>
+        k === "b64_json" && typeof v === "string"
+          ? [k, `[base64 已省略，共 ${v.length} 字符]`]
+          : [k, stripB64(v)]
+      )
+    );
+  };
+  const displayData = count === 1 ? rawResponses[0] : rawResponses;
+  elements.rawResponse.textContent = JSON.stringify(stripB64(displayData), null, 2);
   elements.rawResponseBox.classList.remove("hidden");
 
   if (imageCount > 0 && failed === 0) {
